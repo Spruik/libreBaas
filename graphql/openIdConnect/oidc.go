@@ -492,6 +492,8 @@ func (pep *PEP) UpdateAuthResourceDefinition(ctx context.Context, schema *schema
 		resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, strings.Trim(update.TypeName, "\000")+":mutation")
 		resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, strings.Trim(update.TypeName, "\000")+":subscription")
 		resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, strings.Trim(update.TypeName, "\000")+":delete")
+		resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, strings.Trim(update.TypeName, "\000")+"AggregateResult:query")
+		resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, strings.Trim(update.TypeName, "\000")+"AggregateResult:subscription")
 	}
 	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "GQLSchema:query")
 	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "NodeState:query")
