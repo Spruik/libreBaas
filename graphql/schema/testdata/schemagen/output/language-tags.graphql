@@ -2,17 +2,24 @@
 # Input Schema
 #######################
 
-interface Abstract {
-	id: ID!
-	name(random: Int!, size: String): String!
+interface Node {
+	f1: String
 }
 
-type Message implements Abstract {
-	id: ID!
-	name(random: Int!, size: String): String!
-	content(pick: Int!, name: String): String!
-	author: String
-	datePosted: DateTime
+type Person implements Node {
+	f1: String
+	f1Hi: String @dgraph(pred: "Node.f1@hi")
+	f2: String @dgraph(pred: "T.f@no")
+	f3: String @dgraph(pred: "f3@en")
+	name: String! @id
+	nameHi: String @dgraph(pred: "Person.name@hi") @search(by: [term,exact])
+	nameEn: String @dgraph(pred: "Person.name@en") @search(by: [regexp])
+	nameHiEn: String @dgraph(pred: "Person.name@hi:en")
+	nameHi_En_Untag: String @dgraph(pred: "Person.name@hi:en:.")
+	name_Untag_AnyLang: String @dgraph(pred: "Person.name@.")
+	address: String @search(by: [fulltext])
+	addressHi: String @dgraph(pred: "Person.address@hi")
+	professionEn: String @dgraph(pred: "Person.profession@en")
 }
 
 #######################
@@ -286,48 +293,66 @@ input StringHashFilter {
 # Generated Types
 #######################
 
-type AbstractAggregateResult {
-	count: Int
-	nameMin: String
-	nameMax: String
-}
-
-type AddMessagePayload {
-	message(filter: MessageFilter, order: MessageOrder, first: Int, offset: Int): [Message]
+type AddPersonPayload {
+	person(filter: PersonFilter, order: PersonOrder, first: Int, offset: Int): [Person]
 	numUids: Int
 }
 
-type DeleteAbstractPayload {
-	abstract(filter: AbstractFilter, order: AbstractOrder, first: Int, offset: Int): [Abstract]
+type DeleteNodePayload {
+	node(filter: NodeFilter, order: NodeOrder, first: Int, offset: Int): [Node]
 	msg: String
 	numUids: Int
 }
 
-type DeleteMessagePayload {
-	message(filter: MessageFilter, order: MessageOrder, first: Int, offset: Int): [Message]
+type DeletePersonPayload {
+	person(filter: PersonFilter, order: PersonOrder, first: Int, offset: Int): [Person]
 	msg: String
 	numUids: Int
 }
 
-type MessageAggregateResult {
+type NodeAggregateResult {
 	count: Int
-	nameMin: String
-	nameMax: String
-	contentMin: String
-	contentMax: String
-	authorMin: String
-	authorMax: String
-	datePostedMin: DateTime
-	datePostedMax: DateTime
+	f1Min: String
+	f1Max: String
 }
 
-type UpdateAbstractPayload {
-	abstract(filter: AbstractFilter, order: AbstractOrder, first: Int, offset: Int): [Abstract]
+type PersonAggregateResult {
+	count: Int
+	f1Min: String
+	f1Max: String
+	f1HiMin: String
+	f1HiMax: String
+	f2Min: String
+	f2Max: String
+	f3Min: String
+	f3Max: String
+	nameMin: String
+	nameMax: String
+	nameHiMin: String
+	nameHiMax: String
+	nameEnMin: String
+	nameEnMax: String
+	nameHiEnMin: String
+	nameHiEnMax: String
+	nameHi_En_UntagMin: String
+	nameHi_En_UntagMax: String
+	name_Untag_AnyLangMin: String
+	name_Untag_AnyLangMax: String
+	addressMin: String
+	addressMax: String
+	addressHiMin: String
+	addressHiMax: String
+	professionEnMin: String
+	professionEnMax: String
+}
+
+type UpdateNodePayload {
+	node(filter: NodeFilter, order: NodeOrder, first: Int, offset: Int): [Node]
 	numUids: Int
 }
 
-type UpdateMessagePayload {
-	message(filter: MessageFilter, order: MessageOrder, first: Int, offset: Int): [Message]
+type UpdatePersonPayload {
+	person(filter: PersonFilter, order: PersonOrder, first: Int, offset: Int): [Person]
 	numUids: Int
 }
 
@@ -335,100 +360,141 @@ type UpdateMessagePayload {
 # Generated Enums
 #######################
 
-enum AbstractHasFilter {
-	name
+enum NodeHasFilter {
+	f1
 }
 
-enum AbstractOrderable {
-	name
+enum NodeOrderable {
+	f1
 }
 
-enum MessageHasFilter {
+enum PersonHasFilter {
+	f1
+	f1Hi
+	f2
+	f3
 	name
-	content
-	author
-	datePosted
+	nameHi
+	nameEn
+	name_Untag_AnyLang
+	address
+	addressHi
+	professionEn
 }
 
-enum MessageOrderable {
+enum PersonOrderable {
+	f1
+	f1Hi
+	f2
+	f3
 	name
-	content
-	author
-	datePosted
+	nameHi
+	nameEn
+	name_Untag_AnyLang
+	address
+	addressHi
+	professionEn
 }
 
 #######################
 # Generated Inputs
 #######################
 
-input AbstractFilter {
-	id: [ID!]
-	has: [AbstractHasFilter]
-	and: [AbstractFilter]
-	or: [AbstractFilter]
-	not: AbstractFilter
-}
-
-input AbstractOrder {
-	asc: AbstractOrderable
-	desc: AbstractOrderable
-	then: AbstractOrder
-}
-
-input AbstractPatch {
-	name: String
-}
-
-input AbstractRef {
-	id: ID!
-}
-
-input AddMessageInput {
+input AddPersonInput {
+	f1: String
+	f1Hi: String
+	f2: String
+	f3: String
 	name: String!
-	content: String!
-	author: String
-	datePosted: DateTime
+	nameHi: String
+	nameEn: String
+	address: String
+	addressHi: String
+	professionEn: String
 }
 
-input MessageFilter {
-	id: [ID!]
-	has: [MessageHasFilter]
-	and: [MessageFilter]
-	or: [MessageFilter]
-	not: MessageFilter
+input NodeFilter {
+	has: [NodeHasFilter]
+	and: [NodeFilter]
+	or: [NodeFilter]
+	not: NodeFilter
 }
 
-input MessageOrder {
-	asc: MessageOrderable
-	desc: MessageOrderable
-	then: MessageOrder
+input NodeOrder {
+	asc: NodeOrderable
+	desc: NodeOrderable
+	then: NodeOrder
 }
 
-input MessagePatch {
+input NodePatch {
+	f1: String
+}
+
+input PersonFilter {
+	name: StringHashFilter
+	nameHi: StringExactFilter_StringTermFilter
+	nameEn: StringRegExpFilter
+	address: StringFullTextFilter
+	has: [PersonHasFilter]
+	and: [PersonFilter]
+	or: [PersonFilter]
+	not: PersonFilter
+}
+
+input PersonOrder {
+	asc: PersonOrderable
+	desc: PersonOrderable
+	then: PersonOrder
+}
+
+input PersonPatch {
+	f1: String
+	f1Hi: String
+	f2: String
+	f3: String
 	name: String
-	content: String
-	author: String
-	datePosted: DateTime
+	nameHi: String
+	nameEn: String
+	address: String
+	addressHi: String
+	professionEn: String
 }
 
-input MessageRef {
-	id: ID
+input PersonRef {
+	f1: String
+	f1Hi: String
+	f2: String
+	f3: String
 	name: String
-	content: String
-	author: String
-	datePosted: DateTime
+	nameHi: String
+	nameEn: String
+	address: String
+	addressHi: String
+	professionEn: String
 }
 
-input UpdateAbstractInput {
-	filter: AbstractFilter!
-	set: AbstractPatch
-	remove: AbstractPatch
+input StringExactFilter_StringTermFilter {
+	eq: String
+	in: [String]
+	le: String
+	lt: String
+	ge: String
+	gt: String
+	between: StringRange
+	allofterms: String
+	anyofterms: String
 }
 
-input UpdateMessageInput {
-	filter: MessageFilter!
-	set: MessagePatch
-	remove: MessagePatch
+input UpdateNodeInput {
+	filter: NodeFilter!
+	set: NodePatch
+	remove: NodePatch
+}
+
+input UpdatePersonInput {
+	filter: PersonFilter!
+	set: PersonPatch
+	remove: PersonPatch
 }
 
 #######################
@@ -436,12 +502,11 @@ input UpdateMessageInput {
 #######################
 
 type Query {
-	getAbstract(id: ID!): Abstract
-	queryAbstract(filter: AbstractFilter, order: AbstractOrder, first: Int, offset: Int): [Abstract]
-	aggregateAbstract(filter: AbstractFilter): AbstractAggregateResult
-	getMessage(id: ID!): Message
-	queryMessage(filter: MessageFilter, order: MessageOrder, first: Int, offset: Int): [Message]
-	aggregateMessage(filter: MessageFilter): MessageAggregateResult
+	queryNode(filter: NodeFilter, order: NodeOrder, first: Int, offset: Int): [Node]
+	aggregateNode(filter: NodeFilter): NodeAggregateResult
+	getPerson(name: String!): Person
+	queryPerson(filter: PersonFilter, order: PersonOrder, first: Int, offset: Int): [Person]
+	aggregatePerson(filter: PersonFilter): PersonAggregateResult
 }
 
 #######################
@@ -449,10 +514,10 @@ type Query {
 #######################
 
 type Mutation {
-	updateAbstract(input: UpdateAbstractInput!): UpdateAbstractPayload
-	deleteAbstract(filter: AbstractFilter!): DeleteAbstractPayload
-	addMessage(input: [AddMessageInput!]!): AddMessagePayload
-	updateMessage(input: UpdateMessageInput!): UpdateMessagePayload
-	deleteMessage(filter: MessageFilter!): DeleteMessagePayload
+	updateNode(input: UpdateNodeInput!): UpdateNodePayload
+	deleteNode(filter: NodeFilter!): DeleteNodePayload
+	addPerson(input: [AddPersonInput!]!, upsert: Boolean): AddPersonPayload
+	updatePerson(input: UpdatePersonInput!): UpdatePersonPayload
+	deletePerson(filter: PersonFilter!): DeletePersonPayload
 }
 

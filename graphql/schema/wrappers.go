@@ -19,12 +19,14 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dgraph-io/dgraph/graphql/authorization"
 	"github.com/dgraph-io/gqlparser/v2/parser"
@@ -113,6 +115,7 @@ type Schema interface {
 	IsFederated() bool
 	SetMeta(meta *metaInfo)
 	Meta() *metaInfo
+	Type(typeName string) Type
 }
 
 // An Operation is a single valid GraphQL operation.  It contains either
@@ -172,7 +175,7 @@ type Field interface {
 	TypeName(dgraphTypes []string) string
 	GetObjectName() string
 	IsAuthQuery() bool
-	CustomHTTPConfig() (*FieldHTTPConfig, error)
+	CustomHTTPConfig(ns uint64) (*FieldHTTPConfig, error)
 	EnumValues() []string
 	ConstructedFor() Type
 	ConstructedForDgraphPredicate() string
@@ -224,6 +227,7 @@ type Query interface {
 	// query
 	RepresentationsArg() (*EntityRepresentations, error)
 	AuthFor(jwtVars map[string]interface{}) Query
+	Schema() Schema
 }
 
 // A Type is a GraphQL type like: Float, T, T! and [T!]!.  If it's not a list, then
@@ -249,7 +253,7 @@ type Type interface {
 	Interfaces() []string
 	ImplementingTypes() []Type
 	EnsureNonNulls(map[string]interface{}, string) error
-	FieldOriginatedFrom(fieldName string) string
+	FieldOriginatedFrom(fieldName string) (Type, bool)
 	AuthRules() *TypeAuth
 	IsGeo() bool
 	IsAggregateResult() bool
@@ -269,6 +273,8 @@ type FieldDefinition interface {
 	IsID() bool
 	IsExternal() bool
 	HasIDDirective() bool
+	GetDefaultValue(action string) interface{}
+	HasInterfaceArg() bool
 	Inverse() FieldDefinition
 	WithMemberType(string) FieldDefinition
 	// TODO - It might be possible to get rid of ForwardEdge and just use Inverse() always.
@@ -397,6 +403,17 @@ func (s *schema) SetMeta(meta *metaInfo) {
 
 func (s *schema) Meta() *metaInfo {
 	return s.meta
+}
+
+func (s *schema) Type(typeName string) Type {
+	if s.typeNameAst[typeName] != nil {
+		return &astType{
+			typ:             &ast.Type{NamedType: typeName},
+			inSchema:        s,
+			dgraphPredicate: s.dgraphPredicate,
+		}
+	}
+	return nil
 }
 
 func (o *operation) IsQuery() bool {
@@ -1473,7 +1490,7 @@ func (t *astType) IsInbuiltOrEnumType() bool {
 	return ok || (t.inSchema.schema.Types[t.Name()].Kind == ast.Enum)
 }
 
-func getCustomHTTPConfig(f *field, isQueryOrMutation bool) (*FieldHTTPConfig, error) {
+func getCustomHTTPConfig(f *field, isQueryOrMutation bool, ns uint64) (*FieldHTTPConfig, error) {
 	custom := f.op.inSchema.customDirectives[f.GetObjectName()][f.Name()]
 	httpArg := custom.Arguments.ForName(httpArg)
 	fconf := &FieldHTTPConfig{
@@ -1570,11 +1587,19 @@ func getCustomHTTPConfig(f *field, isQueryOrMutation bool) (*FieldHTTPConfig, er
 		}
 		fconf.Template = SubstituteVarsInBody(fconf.Template, bodyVars)
 	}
+
+	// If we are querying the lambda directive, update the URL using load balancer. Also, set the
+	// Accept-Encoding header to "*", so that no compression happens. Otherwise, http package sets
+	// gzip encoding which adds overhead for communication within the same machine.
+	if f.HasLambdaDirective() {
+		fconf.URL = x.LambdaUrl(ns)
+		fconf.ForwardHeaders.Set("Accept-Encoding", "*")
+	}
 	return fconf, nil
 }
 
-func (f *field) CustomHTTPConfig() (*FieldHTTPConfig, error) {
-	return getCustomHTTPConfig(f, false)
+func (f *field) CustomHTTPConfig(ns uint64) (*FieldHTTPConfig, error) {
+	return getCustomHTTPConfig(f, false, ns)
 }
 
 func (f *field) EnumValues() []string {
@@ -1786,6 +1811,10 @@ func (q *query) Rename(newName string) {
 	q.field.Name = newName
 }
 
+func (q *query) Schema() Schema {
+	return q.op.inSchema
+}
+
 func (q *query) Name() string {
 	return (*field)(q).Name()
 }
@@ -1882,8 +1911,8 @@ func (q *query) GetObjectName() string {
 	return q.field.ObjectDefinition.Name
 }
 
-func (q *query) CustomHTTPConfig() (*FieldHTTPConfig, error) {
-	return getCustomHTTPConfig((*field)(q), true)
+func (q *query) CustomHTTPConfig(ns uint64) (*FieldHTTPConfig, error) {
+	return getCustomHTTPConfig((*field)(q), true, ns)
 }
 
 func (q *query) EnumValues() []string {
@@ -2182,8 +2211,8 @@ func (m *mutation) MutatedType() Type {
 	return m.op.inSchema.mutatedType[m.Name()]
 }
 
-func (m *mutation) CustomHTTPConfig() (*FieldHTTPConfig, error) {
-	return getCustomHTTPConfig((*field)(m), true)
+func (m *mutation) CustomHTTPConfig(ns uint64) (*FieldHTTPConfig, error) {
+	return getCustomHTTPConfig((*field)(m), true, ns)
 }
 
 func (m *mutation) EnumValues() []string {
@@ -2319,6 +2348,36 @@ func (fd *fieldDefinition) IsID() bool {
 	return isID(fd.fieldDef)
 }
 
+func (fd *fieldDefinition) GetDefaultValue(action string) interface{} {
+	if fd.fieldDef == nil {
+		return nil
+	}
+	return getDefaultValue(fd.fieldDef, action)
+}
+
+func getDefaultValue(fd *ast.FieldDefinition, action string) interface{} {
+	dir := fd.Directives.ForName(defaultDirective)
+	if dir == nil {
+		return nil
+	}
+	arg := dir.Arguments.ForName(action)
+	if arg == nil {
+		return nil
+	}
+	value := arg.Value.Children.ForName("value")
+	if value == nil {
+		return nil
+	}
+	if value.Raw == "$now" {
+		if flag.Lookup("test.v") == nil {
+			return time.Now().Format(time.RFC3339)
+		} else {
+			return "2000-01-01T00:00:00.00Z"
+		}
+	}
+	return value.Raw
+}
+
 func (fd *fieldDefinition) HasIDDirective() bool {
 	if fd.fieldDef == nil {
 		return false
@@ -2327,15 +2386,46 @@ func (fd *fieldDefinition) HasIDDirective() bool {
 }
 
 func hasIDDirective(fd *ast.FieldDefinition) bool {
-	id := fd.Directives.ForName("id")
+	id := fd.Directives.ForName(idDirective)
 	return id != nil
+}
+
+func (fd *fieldDefinition) HasInterfaceArg() bool {
+	if fd.fieldDef == nil {
+		return false
+	}
+	return hasInterfaceArg(fd.fieldDef)
+}
+
+func hasInterfaceArg(fd *ast.FieldDefinition) bool {
+	if !hasIDDirective(fd) {
+		return false
+	}
+	interfaceArg := fd.Directives.ForName(idDirective).Arguments.ForName(idDirectiveInterfaceArg)
+	if interfaceArg == nil {
+		return false
+	}
+
+	value, _ := interfaceArg.Value.Value(nil)
+	if val, ok := value.(bool); ok && val {
+		return true
+	}
+
+	return false
 }
 
 func isID(fd *ast.FieldDefinition) bool {
 	return fd.Type.Name() == "ID"
 }
 
+func hasDefault(fd *ast.FieldDefinition) bool {
+	return fd.Directives.ForName(defaultDirective) != nil
+}
+
 func (fd *fieldDefinition) Type() Type {
+	if fd.fieldDef == nil {
+		return nil
+	}
 	return &astType{
 		typ:             fd.fieldDef.Type,
 		inSchema:        fd.inSchema,
@@ -2699,7 +2789,8 @@ func (t *astType) ImplementingTypes() []Type {
 // satisfy a valid post.
 func (t *astType) EnsureNonNulls(obj map[string]interface{}, exclusion string) error {
 	for _, fld := range t.inSchema.schema.Types[t.Name()].Fields {
-		if fld.Type.NonNull && !isID(fld) && fld.Name != exclusion && t.inSchema.customDirectives[t.Name()][fld.Name] == nil {
+		if fld.Type.NonNull && !isID(fld) && !hasDefault(fld) && fld.Name != exclusion &&
+			t.inSchema.customDirectives[t.Name()][fld.Name] == nil {
 			if val, ok := obj[fld.Name]; !ok || val == nil {
 				return errors.Errorf(
 					"type %s requires a value for field %s, but no value present",
@@ -3017,21 +3108,34 @@ func SubstituteVarsInBody(jsonTemplate interface{}, variables map[string]interfa
 	return jsonTemplate
 }
 
-// FieldOriginatedFrom returns the name of the interface from which given field was inherited.
-// If the field wasn't inherited, but belonged to this type, this type's name is returned.
-// Otherwise, empty string is returned.
-func (t *astType) FieldOriginatedFrom(fieldName string) string {
+// FieldOriginatedFrom returns the interface from which given field was inherited.
+// If the field wasn't inherited, but belonged to this type,then type is returned.
+// Otherwise, nil is returned. Along with type definition we return boolean flag true if field
+// is inherited from interface.
+func (t *astType) FieldOriginatedFrom(fieldName string) (Type, bool) {
+
+	astTyp := &astType{
+		inSchema:        t.inSchema,
+		dgraphPredicate: t.dgraphPredicate,
+	}
+
 	for _, implements := range t.inSchema.schema.Implements[t.Name()] {
 		if implements.Fields.ForName(fieldName) != nil {
-			return implements.Name
+			astTyp.typ = &ast.Type{
+				NamedType: implements.Name,
+			}
+			return astTyp, true
 		}
 	}
 
 	if t.inSchema.schema.Types[t.Name()].Fields.ForName(fieldName) != nil {
-		return t.Name()
+		astTyp.typ = &ast.Type{
+			NamedType: t.inSchema.schema.Types[t.Name()].Name,
+		}
+		return astTyp, false
 	}
 
-	return ""
+	return nil, false
 }
 
 // buildGraphqlRequestFields will build graphql request body from ast.
@@ -3096,4 +3200,19 @@ func parseRequiredArgsFromGQLRequest(req string) (map[string]bool, error) {
 	args := req[strings.Index(req, "(")+1 : strings.LastIndex(req, ")")]
 	_, rf, err := parseBodyTemplate("{"+args+"}", false)
 	return rf, err
+}
+
+// MaybeQuoteArg puts a quote on the function arguments.
+func MaybeQuoteArg(fn string, arg interface{}) string {
+	switch arg := arg.(type) {
+	case string: // dateTime also parsed as string
+		if fn == "regexp" {
+			return arg
+		}
+		return fmt.Sprintf("%q", arg)
+	case float64, float32:
+		return fmt.Sprintf("\"%v\"", arg)
+	default:
+		return fmt.Sprintf("%v", arg)
+	}
 }

@@ -239,7 +239,7 @@ invalid_schemas:
     errlist: [
       { "message": "Type Z; Field f: Field f is of type U, but @hasInverse directive only applies to fields with object types.", "locations": [{"line":9, "column":3}]},
       { "message": "Type Z; Field f: has the @search directive but fields of type U can't have the @search directive.", "locations": [{"line":9, "column":34}]},
-      { "message": "Type Z; Field f: with @id directive must be of type String!, Int! or Int64!, not U", "locations": [{"line":9, "column":42}]}
+      { "message": "Type Z; Field f: with @id directive must be of type String, Int or Int64, not U", "locations": [{"line":9, "column":42}]}
     ]
 
   -
@@ -622,7 +622,7 @@ invalid_schemas:
         f1: [String] @id
       }
     errlist: [
-      {"message": "Type X; Field f1: with @id directive must be of type String!, Int! or Int64!, not [String]",
+      {"message": "Type X; Field f1: with @id directive must be of type String, Int or Int64, not [String]",
       "locations":[{"line":2, "column":17}]}
       ]
 
@@ -633,18 +633,7 @@ invalid_schemas:
         f1: Float! @id
       }
     errlist: [
-      {"message": "Type X; Field f1: with @id directive must be of type String!, Int! or Int64!, not Float!",
-      "locations":[{"line":2, "column":15}]}
-      ]
-
-  -
-    name: "Field with @id directive should be mandatory"
-    input: |
-      type X {
-        f1: String @id
-      }
-    errlist: [
-      {"message": "Type X; Field f1: with @id directive must be of type String!, Int! or Int64!, not String",
+      {"message": "Type X; Field f1: with @id directive must be of type String, Int or Int64, not Float!",
       "locations":[{"line":2, "column":15}]}
       ]
 
@@ -2743,7 +2732,7 @@ invalid_schemas:
           review: String!
       }
     errlist: [
-      {"message": "Type Product; @remote directive cannot be defined with @key directive", "locations": [ { "line": 174, "column": 12} ] },
+      {"message": "Type Product; @remote directive cannot be defined with @key directive", "locations": [ { "line": 179, "column": 12} ] },
     ]
 
   - name: "directives defined on @external fields that are not @key."
@@ -2888,6 +2877,182 @@ invalid_schemas:
     errlist: [
       { "message": "Type TwitterUser; @lambdaOnMutate directive not allowed along with @remote directive.", "locations": [{"line": 1, "column": 27}]}
     ]
+
+  - name: "language tag field should be of String type"
+    input: |
+      type Person  {
+        name: String!
+        nameHi: Int @dgraph(pred:"Person.name@hi")
+      }
+    errlist: [
+      { "message": "Type Person; Field nameHi: Expected type `String` for language tag field but got `Int`",
+        "locations": [ { "line": 3, "column": 3 } ] },
+    ]
+
+  - name: "@id directive not supported on language tag field"
+    input: |
+      type Person  {
+        name: String!
+        nameHi: String! @dgraph(pred:"Person.name@hi") @id
+      }
+    errlist: [
+      { "message": "Type Person; Field nameHi: @id directive not supported on language tag fields",
+        "locations": [ { "line": 3, "column": 51 } ] },
+    ]
+
+  - name: "@search directive not supported on multiple language tag field"
+    input: |
+      type Person  {
+        name: String!
+        nameHiEn: String! @dgraph(pred:"Person.name@hi:en") @search(by: [exact])
+      }
+    errlist: [
+      { "message": "Type Person; Field nameHiEn: @search directive not applicable on language tag
+        field with multiple languages",
+        "locations": [ { "line": 3, "column": 56 } ] },
+    ]
+
+  - name: "unsupported `*` language tag in graphql"
+    input: |
+      type Person  {
+        name: String!
+        nameHi: String @dgraph(pred:"Person.name@*")
+      }
+    errlist: [
+      { "message": "Type Person; Field nameHi: `*` language tag not supported in GraphQL",
+        "locations": [ { "line": 3, "column": 19 } ] },
+    ]
+
+  - name: "@id field can't have interface argument when it's defined inside a type"
+    input: |
+      type Person  {
+        name: String! @id(interface:true)
+        age: Int
+      }
+    errlist: [
+      { "message": "Type Person; Field name: @id field with interface argument
+        can only be defined in interface,not in Type",
+        "locations": [ { "line": 2, "column": 18 } ] },
+    ]
+
+  - name: "@default validates field type for value $now"
+    input: |
+      type X {
+        field: String @default(add:{value:"$now"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: @default directive provides value \"$now\" which cannot be used with String",
+      "locations":[{"line":2, "column":18}]}
+      ]
+
+  - name: "@default validates value for Int"
+    input: |
+      type X {
+        field: Int @default(add:{value:"apple"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: @default directive provides value \"apple\" which cannot be used with Int",
+      "locations":[{"line":2, "column":15}]}
+      ]
+
+  - name: "@default validates value for Float"
+    input: |
+      type X {
+        field: Float @default(add:{value:"apple"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: @default directive provides value \"apple\" which cannot be used with Float",
+      "locations":[{"line":2, "column":17}]}
+      ]
+
+  - name: "@default validates value for Boolean"
+    input: |
+      type X {
+        field: Boolean @default(add:{value:"apple"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: @default directive provides value \"apple\" which cannot be used with Boolean",
+      "locations":[{"line":2, "column":19}]}
+      ]
+
+  - name: "@default validates type is not @remote"
+    input: |
+      type X @remote {
+        field: Int @default(add:{value:"1"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: cannot use @default directive on a @remote type",
+      "locations":[{"line":2, "column":15}]}
+      ]
+
+  - name: "@default validates field type is scalar"
+    input: |
+      type X {
+        field: Y @default(add:{value:"1"})
+      }
+      type Y {
+        field: String
+      }
+    errlist: [
+      {"message": "Type X; Field field: cannot use @default directive on field with non-scalar type Y",
+      "locations":[{"line":2, "column":13}]}
+      ]
+
+  - name: "@default validates field type is not list"
+    input: |
+      type X {
+        field: [String] @default(add:{value:"1"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: cannot use @default directive on field with list type [String]",
+      "locations":[{"line":2, "column":20}]}
+      ]
+
+  - name: "@default validates field type is not @id"
+    input: |
+      type X {
+        field: String! @id @default(add:{value:"foo"})
+      }
+    errlist: [
+      {"message": "Type X; Field field: cannot use @default directive on field with @id directive",
+      "locations":[{"line":2, "column":23}]}
+      ]
+
+  - name: "@default validates field type is not ID"
+    input: |
+      type X {
+        id: ID! @default(add:{value:"foo"})
+        field: String
+      }
+    errlist: [
+      {"message": "Type X; Field id: cannot use @default directive on field with type ID",
+      "locations":[{"line":2, "column":12}]}
+      ]
+
+  - name: "@default validates field type is not @custom"
+    input: |
+      type X {
+        id: String! @id
+        field: String! @default(add:{value:"foo"}) @custom(http: {
+          url: "http://blah.com",
+          method: "GET"
+        })
+      }
+    errlist: [
+      {"message": "Type X; Field field: cannot use @default directive on field with @custom directive",
+      "locations":[{"line":3, "column":19}]}
+      ]
+
+  - name: "@default validates field type is not @lambda"
+    input: |
+      type X {
+        id: String! @id
+        field: String! @default(add:{value:"foo"}) @lambda
+      }
+    errlist: [
+      {"message": "Type X; Field field: cannot use @default directive on field with @lambda directive",
+      "locations":[{"line":3, "column":19}]}
+      ]
 
 valid_schemas:
   - name: "Multiple fields with @id directive should be allowed"
@@ -3367,6 +3532,26 @@ valid_schemas:
         questionText: String
       }
 
+  - name: "valid schema with multiple language tag fields"
+    input: |
+      interface Node {
+        f1: String
+      }
+      type Person implements Node {
+        f1Hi: String @dgraph(pred: "Node.f1@hi")
+        f2: String @dgraph(pred: "T.f@no")
+        name: String! @id
+        f3: String @dgraph(pred: "f3@en")
+        nameHi: String @dgraph(pred: "Person.name@hi") @search(by: [term, exact])
+        nameEn: String @dgraph(pred: "Person.name@en") @search(by: [regexp])
+        nameHiEn: String @dgraph(pred: "Person.name@hi:en")
+        nameHi_En_Untag: String @dgraph(pred: "Person.name@hi:en:.")
+        name_Untag_AnyLang: String @dgraph(pred: "Person.name@.")
+        address: String @search(by: [fulltext])
+        addressHi: String @dgraph(pred: "Person.address@hi")
+        professionEn: String @dgraph(pred: "Person.profession@en")
+      }
+
   - name: "Same reverse dgraph predicate can be used by two different GraphQL fields"
     input: |
       type X {
@@ -3378,4 +3563,38 @@ valid_schemas:
       }
       type Z {
         f4: [X] @dgraph(pred: "link")
+      }
+
+  - name: "valid schema with @id directive having interface argument in interface"
+    input: |
+      interface Member {
+        refID: String! @id(interface: true)
+        name: String! @id
+        itemsIssued: [String]
+        fineAccumulated: Int
+      }
+
+      interface Team {
+        teamID: String! @id(interface: true)
+        teamName: String! @id
+      }
+
+      type LibraryMember implements Member {
+        interests: [String]
+        readHours: String
+      }
+
+      type SportsMember implements Member & Team {
+        plays: String
+        playerRating: Int
+      }
+
+      type CricketTeam implements Team {
+        numOfBatsmans: Int
+        numOfBowlers: Int
+      }
+
+      type LibraryManager {
+        name: String! @id
+        manages: [LibraryMember]
       }
