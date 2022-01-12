@@ -66,8 +66,9 @@ image:
 	@GOOS=linux $(MAKE) dgraph
 	@mkdir -p linux
 	@mv ./dgraph/dgraph ./linux/dgraph
-	@docker build -f contrib/Dockerfile -t dgraph/dgraph:$(subst /,-,${BUILD_BRANCH}) .
+	@docker build -f contrib/Dockerfile -t gcr.io/slippi/dgraph-${BUILD} .
 	@rm -r linux
+	@echo Image tagged as: gcr.io/slippi/dgraph-${BUILD}
 
 help:
 	@echo
