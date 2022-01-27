@@ -1,0 +1,61 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main
+      - feat/github-container-build
+  release:
+    types:
+      - created
+
+env:
+  IMAGE_NAME: dgraph
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Buiid dgraph
+        run: make dgraph
+
+      - name: Create Folder
+        run: mkdir -p linux
+
+      - name: Move binary
+        run: mv ./dgraph/dgraph ./linux/dgraph
+
+      - name: Build image
+        run: docker build ./contrib/Dockerfile --file Dockerfile --tag $IMAGE_NAME --build-arg GITHUB_PAT=${{ secrets.GN_PAT }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1 
+        with:
+          registry: ghcr.io
+          username: geoff-nunan
+          password: ${{ secrets.GN_PAT }}
+      
+      - name: Push image
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository }}
+
+          # Change all uppercase to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+
+          # Strip git ref prefix from version
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+          # Strip "v" prefix from tag name
+          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+
+          # Use Docker `latest` tag convention
+          [ "$VERSION" == "main" ] && VERSION=latest
+
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+
+          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+          docker push $IMAGE_ID:$VERSION
