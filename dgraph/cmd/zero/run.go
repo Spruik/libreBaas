@@ -122,6 +122,20 @@ instances to achieve high-availability.
 				"in Raft elections. This can be used to achieve a read-only replica.").
 		String())
 
+	flag.String("ticker", tickerDefaults, z.NewSuperFlagHelp(tickerDefaults).
+		Head("Ticker options").
+		Flag("cron",
+			"A cron expression to determine when the ticker ticks").
+		Flag("server",
+			"The MQTT server URL and port").
+		Flag("topic",
+			"The MQTT topic to publish the tick to").
+		Flag("user",
+			"The MQTT server username").
+		Flag("password",
+			"The MQTT server password").
+		String())
+
 	flag.String("audit", worker.AuditDefaults, z.NewSuperFlagHelp(worker.AuditDefaults).
 		Head("Audit options").
 		Flag("output",

@@ -27,7 +27,9 @@ require (
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v1.13.1
 	github.com/dustin/go-humanize v1.0.0
+	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/getsentry/sentry-go v0.6.0
+	github.com/go-co-op/gocron v1.13.0
 	github.com/go-sql-driver/mysql v0.0.0-20190330032241-c0f6b444ad8f
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/geo v0.0.0-20170810003146-31fb0106dc4a
@@ -55,7 +57,7 @@ require (
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.7.1
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/twpayne/go-geom v1.0.5
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
 	go.etcd.io/etcd v0.0.0-20190228193606-a943ad0ee4c9
@@ -63,10 +65,9 @@ require (
 	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
 	golang.org/x/text v0.3.3
-	golang.org/x/tools v0.0.0-20210106214847-113979e3529a
 	google.golang.org/grpc v1.27.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.13.1 // indirect
 	gopkg.in/square/go-jose.v2 v2.3.1

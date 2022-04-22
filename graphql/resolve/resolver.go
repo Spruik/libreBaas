@@ -19,6 +19,7 @@ package resolve
 import (
 	"context"
 	"encoding/json"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"net/http"
 	"sort"
 	"strings"
@@ -543,6 +544,34 @@ func (r *RequestResolver) Resolve(ctx context.Context, gqlReq *schema.Request) (
 		var wg sync.WaitGroup
 		allResolved := make([]*Resolved, len(op.Queries()))
 
+		// Get the list of types from the query and check against the auth.
+
+		typeNames := make(map[string]string)
+		var extractTypesFromQuery func(fields []schema.Field)
+		extractTypesFromQuery = func(fields []schema.Field) {
+			for _, field := range fields {
+				if len(field.SelectionSet()) > 0 {
+					extractTypesFromQuery(field.SelectionSet())
+				} else {
+					typeNames[field.GetObjectName()] = field.GetObjectName()
+				}
+			}
+		}
+		for _, query := range op.Queries() {
+			extractTypesFromQuery(query.SelectionSet())
+		}
+
+		switch {
+		case op.IsQuery():
+			err = openIdConnect.OidcPep.CheckPermission("query", ctx, typeNames)
+		case op.IsSubscription():
+			err = openIdConnect.OidcPep.CheckPermission("subscription", ctx, typeNames)
+		}
+		if err != nil {
+			resp.Errors = schema.AsGQLErrors(err)
+			return
+		}
+
 		for i, q := range op.Queries() {
 			wg.Add(1)
 
@@ -584,6 +613,8 @@ func (r *RequestResolver) Resolve(ctx context.Context, gqlReq *schema.Request) (
 		}
 		resolveQueries()
 	case op.IsMutation():
+		// Authorization of mutations is checked in the rewriter so that parsing of the mutation is not duplicated
+
 		// A mutation operation can contain any number of mutation fields.  Those should be executed
 		// serially.
 		// (spec https://graphql.github.io/graphql-spec/June2018/#sec-Normal-and-Serial-Execution)

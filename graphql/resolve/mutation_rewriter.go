@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
+	"github.com/golang/glog"
 	"reflect"
 	"sort"
 	"strconv"
@@ -473,6 +475,17 @@ func (arw *AddRewriter) Rewrite(
 			retErrors = schema.AppendGQLErrs(retErrors, schema.GQLWrapf(gqlErrors,
 				"failed to rewrite mutation payload"))
 		}
+		// GN get list of types being mutated
+		requestTypes := make(map[string]string)
+		for _, val := range fragment.newNodes {
+			requestTypes[val.DgraphName()] = val.DgraphName()
+		}
+		//ToDo: Check if pep is nil
+		err := openIdConnect.OidcPep.CheckPermission("mutation", ctx, requestTypes)
+		if err != nil {
+			retErrors = err
+		}
+
 		// TODO: Do RBAC authorization along with RewriteQueries. This will save some time and queries need
 		// not be executed in case RBAC is Negative.
 		// upsertVar is non-empty in case this is an upsert Mutation and the XID at
@@ -636,6 +649,16 @@ func (urw *UpdateRewriter) Rewrite(
 					"failed to rewrite mutation payload"))
 			}
 			if fragment != nil {
+				// authorization check
+				// GN get list of types being mutated
+				requestTypes := make(map[string]string)
+				for _, val := range fragment.newNodes {
+					requestTypes[val.DgraphName()] = val.DgraphName()
+				}
+				err = openIdConnect.OidcPep.CheckPermission("mutation", ctx, requestTypes)
+				if err != nil {
+					retErrors = err
+				}
 				urw.setFrag = fragment
 			}
 		}
@@ -654,6 +677,16 @@ func (urw *UpdateRewriter) Rewrite(
 					"failed to rewrite mutation payload"))
 			}
 			if fragment != nil {
+				// authorization check
+				// get list of types being mutated
+				requestTypes := make(map[string]string)
+				for _, val := range fragment.newNodes {
+					requestTypes[val.DgraphName()] = val.DgraphName()
+				}
+				err = openIdConnect.OidcPep.CheckPermission("mutation", ctx, requestTypes)
+				if err != nil {
+					retErrors = err
+				}
 				urw.delFrag = fragment
 			}
 		}
@@ -1019,7 +1052,14 @@ func (drw *deleteRewriter) Rewrite(
 			"(internal error) call to build delete mutation for %s mutation type",
 			m.MutationType())
 	}
-
+	// check authorization
+	requestTypes := make(map[string]string)
+	glog.Infof("delete type : %v", m.MutatedType().Name())
+	requestTypes[m.MutatedType().Name()] = m.MutatedType().Name()
+	err := openIdConnect.OidcPep.CheckPermission("delete", ctx, requestTypes)
+	if err != nil {
+		return nil, err
+	}
 	customClaims, err := m.GetAuthMeta().ExtractCustomClaims(ctx)
 	if err != nil {
 		return nil, err

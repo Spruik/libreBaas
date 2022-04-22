@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"log"
 	"math"
 	"net"
@@ -265,6 +266,18 @@ they form a Raft group and provide synchronous replication.
 			"The number of days audit logs will be preserved.").
 		Flag("size",
 			"The audit log max size in MB after which it will be rolled over.").
+		String())
+
+	flag.String("oidc", worker.OIDCDefaults, z.NewSuperFlagHelp(worker.OIDCDefaults).
+		Head("Open ID Connect options").
+		Flag("url",
+			`the base url for the OIDC server. example https://localhost:1234`).
+		Flag("realm",
+			"The name of the realm within the OIDC server").
+		Flag("client-id",
+			"The id of the client that represents this dgraph service").
+		Flag("client-secret",
+			"The client secret that is used as the password for the service account to access the OIDC server").
 		String())
 }
 
@@ -746,6 +759,30 @@ func run() {
 			return
 		}
 	}
+
+	x.Config.OIDC = z.NewSuperFlag(Alpha.Conf.GetString("oidc")).MergeAndCheckDefault(worker.OIDCDefaults)
+	if x.Config.OIDC.GetString("url") != "" {
+		oicdUrl, err := url.Parse(x.Config.OIDC.GetString("url"))
+		if err != nil {
+			glog.Errorf("unable to parse --graphql lambda-url: %v", err)
+			return
+		}
+		if !oicdUrl.IsAbs() {
+			glog.Errorf("expecting --graphql lambda-url to be an absolute URL, got: %s",
+				oicdUrl.String())
+			return
+		}
+	} else {
+		glog.Errorf("expecting --oidc url to be specified")
+		return
+	}
+	openIdConnect.OidcPep, err = openIdConnect.NewPEP()
+	x.Check(err)
+	x.AssertTrue(openIdConnect.OidcPep != nil)
+	// register the admin resource and admin scope in the authorization server
+	err = openIdConnect.OidcPep.SyncOIDCAdminResource(context.Background())
+	x.Check(err)
+
 	edgraph.Init()
 
 	x.PrintVersion()

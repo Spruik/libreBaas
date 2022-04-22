@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"math"
 	"net"
 	"sort"
@@ -212,7 +213,10 @@ func UpdateGQLSchema(ctx context.Context, gqlSchema,
 			return nil, err
 		}
 	}
-
+	err = openIdConnect.OidcPep.SyncOIDCGraphQLResource(ctx, parsedDgraphSchema)
+	if err != nil {
+		return nil, err
+	}
 	return worker.UpdateGQLSchemaOverNetwork(ctx, &pb.UpdateGraphQLSchemaRequest{
 		StartTs:       worker.State.GetTimestamp(false),
 		GraphqlSchema: gqlSchema,

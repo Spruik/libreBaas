@@ -108,6 +108,8 @@ func (s *Server) Init() {
 	}
 
 	go s.rebalanceTablets()
+
+	go s.CronScheduler(context.Background())
 }
 
 func (s *Server) periodicallyPostTelemetry() {

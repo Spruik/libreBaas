@@ -61,7 +61,11 @@ type Options struct {
 	// 	|=========================================================================================|
 	//
 	// poll-interval duration - The polling interval for graphql subscription.
-	GraphQL      *z.SuperFlag
+	GraphQL *z.SuperFlag
+
+	// OIDC options:
+	OIDC *z.SuperFlag
+
 	GraphQLDebug bool
 }
 
