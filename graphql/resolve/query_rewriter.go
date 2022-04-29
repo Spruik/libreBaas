@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,13 +114,17 @@ func (qr *queryRewriter) Rewrite(
 	ctx context.Context,
 	gqlQuery schema.Query) ([]*gql.GraphQuery, error) {
 
-	customClaims, err := gqlQuery.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := gqlQuery.GetAuthMeta().ExtractCustomClaims(ctx)
+	//if err != nil {
+	//	return nil, err
+	//}
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		return nil, err
 	}
-
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 	authRw := &authRewriter{
-		authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		varGen:        NewVariableGenerator(),
 		selector:      getAuthSelector(gqlQuery.QueryType()),
 		parentVarName: gqlQuery.ConstructedFor().Name() + "Root",

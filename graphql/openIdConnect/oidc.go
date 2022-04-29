@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"github.com/dgraph-io/dgraph/schema"
 	"github.com/dgraph-io/dgraph/x"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/golang/glog"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/metadata"
@@ -69,6 +69,7 @@ func (pep *PEP) GetPublicKeys() error {
 	var body map[string]interface{}
 	uri := pep.baseUrl + "/auth/realms/" + pep.realm + "/protocol/openid-connect/certs"
 	resp, err := http.Get(uri)
+	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -119,7 +120,6 @@ func (pep *PEP) GetRPT(accessToken, resource string) (*string, error) {
 	}
 	req.Header.Add("Authorization", "Bearer "+accessToken)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	glog.Info(*req)
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -151,35 +151,40 @@ func (pep *PEP) CheckPermission(operationType string, ctx context.Context, typeL
 	// ToDo: Check the Authorization here
 	// Get the list of types from the query and check against the auth.
 	md, _ := metadata.FromIncomingContext(ctx)
-	jwtToken := md.Get("accessJwt")
-	if len(jwtToken) < 1 {
+	jwtTokens := md.Get("auth-token")
+	if len(jwtTokens) < 1 {
 		return errors.New("no access token provided")
 	}
-	// check the jwt
-	_, err := jwt.Parse(jwtToken[0], func(token *jwt.Token) (interface{}, error) {
+	jwtToken, err := stripBearerPrefixFromTokenString(jwtTokens[0])
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+	// check the jwt. We expect the auth-token to be a bearer token, so we need to
+	// strip off the "bearer "
+	_, err = jwt.Parse(jwtToken, func(token *jwt.Token) (interface{}, error) {
 		return pep.rsaKeys[token.Header["kid"].(string)], nil
 	})
-	rpt, err := pep.GetRPT(jwtToken[0], "graphql")
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+	rpt, err := pep.GetRPT(jwtToken, "graphql")
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+	// get the claims from the RPT
+	claims, err := pep.ValidateAndDecodeRPT(*rpt)
 	if err != nil {
 		return err
 	}
-	// get the permission scopes from the RPT
-	scopes, err := pep.ValidateAndDecodeRPT(*rpt)
-	if err != nil {
-		return err
-	}
+	// get the permission scopes from the RPT claims
+	scopes := pep.ExtractAuthVariablesFromClaims(claims)
 	authorized := true
 	errorDescription := ""
 	for typeName := range typeList {
-		match := false
-		for _, scope := range scopes {
-			glog.Infof("matching type %v:"+operationType+" with scope %v", typeName, scope)
-			if typeName+":"+operationType == scope {
-				match = true
-				break
-			}
-		}
-		if !match {
+		if _, ok := scopes[typeName+":"+operationType]; !ok {
 			authorized = false
 			errorDescription = errorDescription + " unauthorized type " + typeName
 		}
@@ -188,6 +193,38 @@ func (pep *PEP) CheckPermission(operationType string, ctx context.Context, typeL
 		return errors.New(errorDescription)
 	}
 	return nil
+}
+func (pep *PEP) GetCustomClaims(ctx context.Context) (*CustomClaims, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	jwtTokens := md.Get("auth-token")
+	if len(jwtTokens) < 1 {
+		return nil, errors.New("no access token provided")
+	}
+	jwtToken, err := stripBearerPrefixFromTokenString(jwtTokens[0])
+	if err != nil {
+		glog.Error(err)
+		return nil, err
+	}
+	// check the jwt. We expect the auth-token to be a bearer token, so we need to
+	// strip off the "bearer "
+	_, err = jwt.Parse(jwtToken, func(token *jwt.Token) (interface{}, error) {
+		return pep.rsaKeys[token.Header["kid"].(string)], nil
+	})
+	if err != nil {
+		glog.Error(err)
+		return nil, err
+	}
+	rpt, err := pep.GetRPT(jwtToken, "graphql")
+	if err != nil {
+		glog.Error(err)
+		return nil, err
+	}
+	// get the claims from the RPT
+	claims, err := pep.ValidateAndDecodeRPT(*rpt)
+	if err != nil {
+		return nil, err
+	}
+	return claims, nil
 }
 
 /* Use the Requesting Party Token (RPT) and the list of types to check if the
@@ -203,15 +240,16 @@ func (pep *PEP) CheckAdminPermission(token string) error {
 	if err != nil {
 		return err
 	}
-	// get the permission scopes from the RPT
-	scopes, err := pep.ValidateAndDecodeRPT(*rpt)
+	// get the claims from the RPT
+	claims, err := pep.ValidateAndDecodeRPT(*rpt)
 	if err != nil {
 		return err
 	}
+
 	authorized := false
 	errorDescription := "token does not have permission to access the admin scope on the admin resource"
 
-	for _, scope := range scopes {
+	for _, scope := range pep.ExtractAuthVariablesFromClaims(claims) {
 		if scope == "admin" {
 			authorized = true
 			break
@@ -224,36 +262,56 @@ func (pep *PEP) CheckAdminPermission(token string) error {
 	return nil
 }
 
+type CustomClaims struct {
+	AuthVariables struct {
+		Permissions []struct {
+			Scopes []string `json:"scopes"`
+		} `json:"permissions"`
+	} `json:"authorization"`
+	jwt.StandardClaims
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
 /* The Requesting Party Token (RPT) is a special JWT that contains
 the permissions and scopes for authorization. To get an RPT, pass in the access token
 of the user, and the resource and client that the user is trying to access.
 The authorization scopes are held within the claim authorization.permissions.scopes
 */
-func (pep *PEP) ValidateAndDecodeRPT(RPT string) ([]string, error) {
-	type RPTClaims struct {
-		Authorization struct {
-			Permissions []struct {
-				Scopes []string `json:"scopes"`
-			} `json:"permissions"`
-		} `json:"authorization"`
-		jwt.StandardClaims
-	}
+func (pep *PEP) ValidateAndDecodeRPT(RPT string) (*CustomClaims, error) {
 
-	token, err := jwt.ParseWithClaims(RPT, &RPTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(RPT, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return pep.rsaKeys[token.Header["kid"].(string)], nil
-	})
+	}, jwt.WithoutAudienceValidation())
 	if err != nil {
 		return nil, err
 	}
 
 	if token.Valid {
-		return token.Claims.(*RPTClaims).Authorization.Permissions[0].Scopes, nil
-	} else if ve, ok := err.(*jwt.ValidationError); ok {
-		return nil, ve.Inner
+		return token.Claims.(*CustomClaims), nil
 	} else {
 		fmt.Println("Couldn't handle this token:", err)
 	}
 	return nil, err
+}
+
+func (pep *PEP) ExtractAuthVariablesFromClaims(claims *CustomClaims) map[string]interface{} {
+
+	customClaims := make(map[string]interface{})
+
+	customClaims["name"] = claims.Name
+	customClaims["email"] = claims.Email
+	if len(claims.AuthVariables.Permissions) > 0 {
+		for _, permission := range claims.AuthVariables.Permissions {
+			if len(permission.Scopes) > 0 {
+				for _, scope := range permission.Scopes {
+					customClaims[scope] = scope
+				}
+			}
+		}
+	}
+
+	return customClaims
 }
 
 /*
@@ -322,7 +380,6 @@ func (pep *PEP) GetAccessToken() (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	glog.Info(cmp.Diff(nil, response))
 	if response.Error != nil {
 		// an error was returned
 		glog.Errorf("Error %v Description %v", *response.Error, *response.ErrorDescription)
@@ -355,7 +412,6 @@ func (pep *PEP) QueryResource(name, token string) (*string, error) {
 	defer res.Body.Close()
 
 	resBody, err := io.ReadAll(res.Body)
-	glog.Info(string(resBody))
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +515,6 @@ func (pep *PEP) UpdateAuthAdminResourceDefinition(ctx context.Context, token str
 	}
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Authorization", "Bearer "+token)
-	glog.Info(cmp.Diff(nil, req))
 	res, err := client.Do(req)
 	if err != nil {
 		glog.Error(err)
@@ -477,4 +532,13 @@ func (pep *PEP) UpdateAuthAdminResourceDefinition(ctx context.Context, token str
 	glog.Info(cmp.Diff(nil, string(resBody)))
 
 	return nil
+}
+
+// Strips 'Bearer ' prefix from bearer token string
+func stripBearerPrefixFromTokenString(tok string) (string, error) {
+	// Should be a bearer token
+	if len(tok) > 6 && strings.ToUpper(tok[0:7]) == "BEARER " {
+		return tok[7:], nil
+	}
+	return tok, nil
 }

@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"sort"
 	"strconv"
 
@@ -563,11 +564,15 @@ func authorizeNewNodes(
 	queryExecutor DgraphExecutor,
 	txn *dgoapi.TxnContext) error {
 
-	customClaims, err := m.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := m.GetAuthMeta().ExtractCustomClaims(ctx)
+	//if err != nil {
+	//	return schema.GQLWrapf(err, "authorization failed")
+	//}
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		return schema.GQLWrapf(err, "authorization failed")
 	}
-	authVariables := customClaims.AuthVariables
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 	newRw := &authRewriter{
 		authVariables: authVariables,
 		varGen:        NewVariableGenerator(),

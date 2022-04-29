@@ -23,6 +23,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
 	"regexp"
@@ -318,19 +319,24 @@ func (a *AuthMeta) ExtractCustomClaims(ctx context.Context) (*CustomClaims, erro
 	if a == nil {
 		return &CustomClaims{}, nil
 	}
-	// return CustomClaims containing jwt and authvariables.
+	// return CustomClaims containing jwt and auth variables.
+	glog.Info("extracting custom claims from rpt token")
 	md, _ := metadata.FromIncomingContext(ctx)
-	jwtToken := md.Get(string(AuthJwtCtxKey))
-	if len(jwtToken) == 0 {
+	jwtTokens := md.Get("auth-token")
+	if len(jwtTokens) == 0 {
 		if a.ClosedByDefault {
 			return &CustomClaims{}, fmt.Errorf("a valid JWT is required but was not provided")
 		} else {
 			return &CustomClaims{}, nil
 		}
-	} else if len(jwtToken) > 1 {
+	} else if len(jwtTokens) > 1 {
 		return nil, fmt.Errorf("invalid jwt auth token")
 	}
-	return a.validateJWTCustomClaims(jwtToken[0])
+	jwtToken, err := stripBearerPrefixFromTokenString(jwtTokens[0])
+	if err != nil {
+		return nil, err
+	}
+	return a.validateJWTCustomClaims(jwtToken)
 }
 
 func GetJwtToken(ctx context.Context) string {
@@ -555,4 +561,13 @@ func (a *AuthMeta) InitHttpClient() {
 	a.httpClient = &http.Client{
 		Timeout: 30 * time.Second,
 	}
+}
+
+// Strips 'Bearer ' prefix from bearer token string
+func stripBearerPrefixFromTokenString(tok string) (string, error) {
+	// Should be a bearer token
+	if len(tok) > 6 && strings.ToUpper(tok[0:7]) == "BEARER " {
+		return tok[7:], nil
+	}
+	return tok, nil
 }

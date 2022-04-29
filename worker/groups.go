@@ -890,7 +890,7 @@ START:
 				return
 			}
 			if i == 0 {
-				glog.Infof("Received first state update from Zero: %+v", state)
+				//glog.Infof("Received first state update from Zero: %+v", state)
 				x.WriteCidFile(state.Cid)
 			}
 			select {

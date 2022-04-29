@@ -492,14 +492,14 @@ func (arw *AddRewriter) Rewrite(
 		// top level exists. upsertVar in this case contains variable name of the node
 		// which is going to be updated. Eg. State3 .
 		if upsertVar != "" {
-			// Add auth queries for upsert mutation.
-			customClaims, err := m.GetAuthMeta().ExtractCustomClaims(ctx)
+			//customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+			customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 			if err != nil {
-				return ret, err
+				return nil, err
 			}
-
+			authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 			authRw := &authRewriter{
-				authVariables: customClaims.AuthVariables,
+				authVariables: authVariables,
 				varGen:        varGen,
 				selector:      updateAuthSelector,
 				parentVarName: m.MutatedType().Name() + "Root",
@@ -613,13 +613,14 @@ func (urw *UpdateRewriter) Rewrite(
 	// These are returned by this function.
 	var retErrors error
 
-	customClaims, err := m.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
-		return ret, err
+		return nil, err
 	}
-
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 	authRw := &authRewriter{
-		authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		varGen:        varGen,
 		selector:      updateAuthSelector,
 		parentVarName: m.MutatedType().Name() + "Root",
@@ -782,13 +783,14 @@ func (arw *AddRewriter) FromMutationResult(
 		errs = schema.AsGQLErrors(errors.Errorf("no new node was created"))
 	}
 
-	customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		return nil, err
 	}
-
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 	authRw := &authRewriter{
-		authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		varGen:        NewVariableGenerator(),
 		selector:      queryAuthSelector,
 		parentVarName: mutation.MutatedType().Name() + "Root",
@@ -818,14 +820,14 @@ func (urw *UpdateRewriter) FromMutationResult(
 	if err != nil {
 		return nil, err
 	}
-
-	customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		return nil, err
 	}
-
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 	authRw := &authRewriter{
-		authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		varGen:        NewVariableGenerator(),
 		selector:      queryAuthSelector,
 		parentVarName: mutation.MutatedType().Name() + "Root",
@@ -1060,13 +1062,15 @@ func (drw *deleteRewriter) Rewrite(
 	if err != nil {
 		return nil, err
 	}
-	customClaims, err := m.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := mutation.GetAuthMeta().ExtractCustomClaims(ctx)
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		return nil, err
 	}
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 
 	authRw := &authRewriter{
-		authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		varGen:        drw.VarGen,
 		selector:      deleteAuthSelector,
 		parentVarName: m.MutatedType().Name() + "Root",
@@ -1098,7 +1102,7 @@ func (drw *deleteRewriter) Rewrite(
 	// be deleted before they are deleted. Let's add a query to do that.
 	if queryField := m.QueryField(); queryField != nil {
 		queryAuthRw := &authRewriter{
-			authVariables: customClaims.AuthVariables,
+			authVariables: authVariables,
 			varGen:        drw.VarGen,
 			selector:      queryAuthSelector,
 			filterByUid:   true,
@@ -2170,15 +2174,17 @@ func addDelete(
 	// then we need update permission on Author1
 
 	// grab the auth for Author1
-	customClaims, err := qryFld.GetAuthMeta().ExtractCustomClaims(ctx)
+	//customClaims, err := qryFld.GetAuthMeta().ExtractCustomClaims(ctx)
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		frag.check =
 			checkQueryResult("auth.failed", nil, schema.GQLWrapf(err, "authorization failed"))
 		return
 	}
-
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
 	newRw := &authRewriter{
-		authVariables: customClaims.AuthVariables,
+		//authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		varGen:        varGen,
 		varName:       targetVar,
 		selector:      updateAuthSelector,

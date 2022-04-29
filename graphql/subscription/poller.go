@@ -19,13 +19,12 @@ package subscription
 import (
 	"context"
 	"encoding/json"
+	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"math"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/dgrijalva/jwt-go/v4"
 
 	"github.com/dgraph-io/dgraph/graphql/resolve"
 	"github.com/dgraph-io/dgraph/graphql/schema"
@@ -83,27 +82,30 @@ func (p *Poller) AddSubscriber(req *schema.Request) (*SubscriberResponse, error)
 	if err != nil {
 		return nil, err
 	}
-	customClaims, err := authMeta.ExtractCustomClaims(ctx)
+	//customClaims, err := authMeta.ExtractCustomClaims(ctx)
+	customClaims, err := openIdConnect.OidcPep.GetCustomClaims(ctx)
 	if err != nil {
 		return nil, err
 	}
+	authVariables := openIdConnect.OidcPep.ExtractAuthVariablesFromClaims(customClaims)
+
 	// for the cases when no expiry is given in jwt or subscription doesn't have any authorization,
 	// we set their expiry to zero time
-	if customClaims.StandardClaims.ExpiresAt == nil {
-		customClaims.StandardClaims.ExpiresAt = jwt.At(time.Time{})
-	}
+	//if customClaims.StandardClaims.ExpiresAt == nil {
+	//	customClaims.StandardClaims.ExpiresAt = jwt.At(time.Time{})
+	//}
 
 	buf, err := json.Marshal(req)
 	x.Check(err)
 	var bucketID uint64
-	if customClaims.AuthVariables != nil {
+	if authVariables != nil {
 
 		// TODO - Add custom marshal function that marshal's the json in sorted order.
-		authvariables, err := json.Marshal(customClaims.AuthVariables)
+		authVariables, err := json.Marshal(customClaims.AuthVariables)
 		if err != nil {
 			return nil, err
 		}
-		bucketID = farm.Fingerprint64(append(buf, authvariables...))
+		bucketID = farm.Fingerprint64(append(buf, authVariables...))
 	} else {
 		bucketID = farm.Fingerprint64(buf)
 	}
@@ -150,7 +152,7 @@ func (p *Poller) AddSubscriber(req *schema.Request) (*SubscriberResponse, error)
 		bucketID:      bucketID,
 		prevHash:      prevHash,
 		graphqlReq:    req,
-		authVariables: customClaims.AuthVariables,
+		authVariables: authVariables,
 		localEpoch:    localEpoch,
 	}
 	go p.poll(pollR)
@@ -182,7 +184,7 @@ func (p *Poller) poll(req *pollRequest) {
 
 		globalEpoch := atomic.LoadUint64(p.globalEpoch)
 		if req.localEpoch != globalEpoch || globalEpoch == math.MaxUint64 {
-			// There is a schema change since local epoch is diffrent from global schema epoch.
+			// There is a schema change since local epoch is different from global schema epoch.
 			// We'll terminate all the subscription for this bucket. So, that all client can
 			// reconnect and listen for new schema.
 			p.terminateSubscriptions(req.bucketID)

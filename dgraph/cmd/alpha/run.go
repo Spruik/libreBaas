@@ -786,9 +786,6 @@ func run() {
 	edgraph.Init()
 
 	x.PrintVersion()
-	glog.Infof("x.Config: %+v", x.Config)
-	glog.Infof("x.WorkerConfig: %+v", x.WorkerConfig)
-	glog.Infof("worker.Config: %+v", worker.Config)
 
 	worker.InitServerState()
 	worker.InitTasks()

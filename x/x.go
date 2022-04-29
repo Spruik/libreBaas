@@ -501,8 +501,9 @@ func AttachGalaxyOperation(ctx context.Context, ns uint64) context.Context {
 }
 
 // AttachAuthToken adds any incoming PoorMan's auth header data into the grpc context metadata
+// This adds the "Authorization" header value into the context. we expect a bearer token
 func AttachAuthToken(ctx context.Context, r *http.Request) context.Context {
-	if authToken := r.Header.Get("X-Dgraph-AuthToken"); authToken != "" {
+	if authToken := r.Header.Get("Authorization"); authToken != "" {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			md = metadata.New(nil)

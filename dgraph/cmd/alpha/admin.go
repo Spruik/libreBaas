@@ -18,6 +18,7 @@ package alpha
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/dgraph-io/dgraph/graphql/openIdConnect"
 	"github.com/golang/glog"
@@ -45,7 +46,7 @@ func hasPoormansAuth(r *http.Request) bool {
 	return true
 }
 
-func hasOICDAuthorization(r *http.Request) bool {
+func hasOICDAuthorization(r *http.Request) error {
 	//if worker.Config.AuthToken != "" && worker.Config.AuthToken != r.Header.Get(
 	//	"Authorization") {
 	//	return false
@@ -53,16 +54,16 @@ func hasOICDAuthorization(r *http.Request) bool {
 	reqToken := r.Header.Get("Authorization")
 	splitToken := strings.Split(reqToken, "Bearer")
 	if len(splitToken) != 2 {
-		return false
+		return errors.New("invalid bearer token provided")
 	}
 	reqToken = strings.TrimSpace(splitToken[1])
 	err := openIdConnect.OidcPep.CheckAdminPermission(reqToken)
 	if err != nil {
 		glog.Error(err)
-		return false
+		return err
 	}
 
-	return true
+	return nil
 }
 
 func allowedMethodsHandler(allowedMethods allowedMethods, next http.Handler) http.Handler {
@@ -93,9 +94,9 @@ func adminAuthHandler(next http.Handler) http.Handler {
 		// We expect to receive a valid access token in the api request.
 		// exchange the access token for a RequestingPartyToken (RPT) and check the permissions in the RPT.
 		// The OIDC Policy Enforcement Point code should have registered the required authorization scopes for the admin resource
-		if !hasOICDAuthorization(r) {
+		if err := hasOICDAuthorization(r); err != nil {
 			x.AddCorsHeaders(w)
-			x.SetStatus(w, x.ErrorUnauthorized, "Access Token does not have access to admin resource scopes")
+			x.SetStatus(w, x.ErrorUnauthorized, err.Error())
 			return
 		}
 
