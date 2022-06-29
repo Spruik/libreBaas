@@ -66,7 +66,7 @@ image:
 	@GOOS=linux $(MAKE) dgraph
 	@mkdir -p linux
 	@mv ./dgraph/dgraph ./linux/dgraph
-	@docker build -f contrib/Dockerfile -t libre/endless:$(subst /,-,${BUILD_BRANCH}) .
+	@docker build -f contrib/Dockerfile -t libre/baas:$(subst /,-,${BUILD_BRANCH}) .
 	@rm -r linux
 
 help:

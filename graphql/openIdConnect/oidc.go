@@ -67,7 +67,8 @@ These can be retrieved from the OAuth2 server
 func (pep *PEP) GetPublicKeys() error {
 	pep.rsaKeys = make(map[string]*rsa.PublicKey)
 	var body map[string]interface{}
-	uri := pep.baseUrl + "/auth/realms/" + pep.realm + "/protocol/openid-connect/certs"
+	uri := pep.baseUrl + "/realms/" + pep.realm + "/protocol/openid-connect/certs"
+	glog.Infof("getting oidc public keys from %s", uri)
 	resp, err := http.Get(uri)
 	defer resp.Body.Close()
 	if err != nil {
@@ -77,6 +78,7 @@ func (pep *PEP) GetPublicKeys() error {
 	if err != nil {
 		return err
 	}
+	glog.Infof("%s", body)
 	for _, bodyKey := range body["keys"].([]interface{}) {
 		key := bodyKey.(map[string]interface{})
 		kid := key["kid"].(string)
@@ -100,19 +102,20 @@ func (pep *PEP) GetRPT(accessToken, resource string) (*string, error) {
 	// check that the accessToken is valid
 	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
 		return pep.rsaKeys[token.Header["kid"].(string)], nil
-	})
+	}, jwt.WithoutAudienceValidation())
 	if err != nil {
+		glog.Error(err)
 		return nil, err
 	}
 	if !token.Valid {
 		return nil, errors.New("access Token is invalid")
 	}
 	client := http.Client{}
-	authUrl := pep.baseUrl + "/auth/realms/" + pep.realm + "/protocol/openid-connect/token"
+	authUrl := pep.baseUrl + "/realms/" + pep.realm + "/protocol/openid-connect/token"
 	form := url.Values{}
 	form.Add("grant_type", "urn:ietf:params:oauth:grant-type:uma-ticket")
 	form.Add("permission", resource)
-	form.Add("audience", "libreBaas")
+	form.Add("audience", pep.clientId)
 
 	req, err := http.NewRequest(http.MethodPost, authUrl, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -129,6 +132,7 @@ func (pep *PEP) GetRPT(accessToken, resource string) (*string, error) {
 
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
+		glog.Info(err)
 		return nil, err
 	}
 	response := Token{}
@@ -164,7 +168,7 @@ func (pep *PEP) CheckPermission(operationType string, ctx context.Context, typeL
 	// strip off the "bearer "
 	_, err = jwt.Parse(jwtToken, func(token *jwt.Token) (interface{}, error) {
 		return pep.rsaKeys[token.Header["kid"].(string)], nil
-	})
+	}, jwt.WithAudience(pep.clientId))
 	if err != nil {
 		glog.Error(err)
 		return err
@@ -209,7 +213,7 @@ func (pep *PEP) GetCustomClaims(ctx context.Context) (*CustomClaims, error) {
 	// strip off the "bearer "
 	_, err = jwt.Parse(jwtToken, func(token *jwt.Token) (interface{}, error) {
 		return pep.rsaKeys[token.Header["kid"].(string)], nil
-	})
+	}, jwt.WithAudience(pep.clientId))
 	if err != nil {
 		glog.Error(err)
 		return nil, err
@@ -238,6 +242,7 @@ func (pep *PEP) CheckAdminPermission(token string) error {
 	})
 	rpt, err := pep.GetRPT(token, "admin")
 	if err != nil {
+		glog.Info(err)
 		return err
 	}
 	// get the claims from the RPT
@@ -354,7 +359,7 @@ using the client_id and client_secret
 func (pep *PEP) GetAccessToken() (*string, error) {
 
 	client := http.Client{}
-	authUrl := pep.baseUrl + "/auth/realms/" + pep.realm + "/protocol/openid-connect/token"
+	authUrl := pep.baseUrl + "/realms/" + pep.realm + "/protocol/openid-connect/token"
 	form := url.Values{}
 	form.Add("grant_type", "client_credentials")
 
@@ -363,6 +368,7 @@ func (pep *PEP) GetAccessToken() (*string, error) {
 		return nil, err
 	}
 	req.SetBasicAuth(pep.clientId, pep.clientSecret)
+	glog.Infof("getting access tokens %s", *req)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	res, err := client.Do(req)
 	if err != nil {
@@ -380,9 +386,10 @@ func (pep *PEP) GetAccessToken() (*string, error) {
 	if err != nil {
 		return nil, err
 	}
+	glog.Infof("access token received: accessToken %s", response)
 	if response.Error != nil {
 		// an error was returned
-		glog.Errorf("Error %v Description %v", *response.Error, *response.ErrorDescription)
+		glog.Errorf("Error %v ", *response.Error)
 		return nil, errors.New(fmt.Sprintf("Error %v Description %v", *response.Error, *response.ErrorDescription))
 	}
 	if response.AccessToken != nil {
@@ -397,13 +404,14 @@ If it exists, the resourceId will be returned
 func (pep *PEP) QueryResource(name, token string) (*string, error) {
 
 	client := http.Client{}
-	authUrl := pep.baseUrl + "/auth/realms/" + pep.realm + "/authz/protection/resource_set?name=" + name
+	authUrl := pep.baseUrl + "/realms/" + pep.realm + "/authz/protection/resource_set?name=" + name
 
 	req, err := http.NewRequest(http.MethodGet, authUrl, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("Authorization", "Bearer "+token)
+	glog.Infof("query resource :%s", *req)
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -456,7 +464,7 @@ func (pep *PEP) UpdateAuthResourceDefinition(ctx context.Context, schema *schema
 	glog.Info(string(jsonBody))
 
 	client := http.Client{}
-	authUrl := pep.baseUrl + "/auth/realms/" + pep.realm + "/authz/protection/resource_set"
+	authUrl := pep.baseUrl + "/realms/" + pep.realm + "/authz/protection/resource_set"
 	method := http.MethodPost
 	if resourceId != nil {
 		authUrl += "/" + *resourceId
@@ -494,6 +502,13 @@ func (pep *PEP) UpdateAuthAdminResourceDefinition(ctx context.Context, token str
 		Name: "admin",
 	}
 	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "admin")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "GQLSchema:query")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "NodeState:query")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "MembershipState:query")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "ClusterGroup:query")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "Member:query")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "Tablet:query")
+	resourceDefinition.ResourceScopes = append(resourceDefinition.ResourceScopes, "License:query")
 
 	jsonBody, err := json.Marshal(resourceDefinition)
 	if err != nil {
@@ -502,7 +517,7 @@ func (pep *PEP) UpdateAuthAdminResourceDefinition(ctx context.Context, token str
 	glog.Info(string(jsonBody))
 
 	client := http.Client{}
-	authUrl := pep.baseUrl + "/auth/realms/" + pep.realm + "/authz/protection/resource_set"
+	authUrl := pep.baseUrl + "/realms/" + pep.realm + "/authz/protection/resource_set"
 	method := http.MethodPost
 	if resourceId != nil {
 		authUrl += "/" + *resourceId
