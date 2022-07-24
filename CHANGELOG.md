@@ -1152,7 +1152,7 @@ and this project will adhere to [Calendar Versioning](https://calver.org/) start
 
 ### Security
 
-- Use SensitiveByteSlice type for hmac secret. ([#5450][])
+- Use Sensitive type for hmac secret. ([#5450][])
 
 
 [#5444]: https://github.com/dgraph-io/dgraph/issues/5444
@@ -1216,7 +1216,7 @@ and this project will adhere to [Calendar Versioning](https://calver.org/) start
 
 ### Security
 
-- Use SensitiveByteSlice type for hmac secret. ([#5451][])
+- Use Sensitive type for hmac secret. ([#5451][])
 
 [#5444]: https://github.com/dgraph-io/dgraph/issues/5444
 [#5359]: https://github.com/dgraph-io/dgraph/issues/5359

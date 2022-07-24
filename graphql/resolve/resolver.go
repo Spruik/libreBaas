@@ -741,7 +741,8 @@ func (hr *httpResolver) Resolve(ctx context.Context, field schema.Field) *Resolv
 }
 
 func (hr *httpResolver) rewriteAndExecute(ctx context.Context, field schema.Field) *Resolved {
-	hrc, err := field.CustomHTTPConfig()
+	ns, _ := x.ExtractNamespace(ctx)
+	hrc, err := field.CustomHTTPConfig(ns)
 	if err != nil {
 		return EmptyResult(field, err)
 	}

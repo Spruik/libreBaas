@@ -746,7 +746,8 @@ func (genc *graphQLEncoder) resolveCustomField(childField gqlSchema.Field,
 	parentNodeHeads []fastJsonNode, wg *sync.WaitGroup) {
 	defer wg.Done() // signal when this goroutine finishes execution
 
-	fconf, err := childField.CustomHTTPConfig()
+	ns, _ := x.ExtractNamespace(genc.ctx)
+	fconf, err := childField.CustomHTTPConfig(ns)
 	if err != nil {
 		genc.errCh <- x.GqlErrorList{childField.GqlErrorf(nil, err.Error())}
 		return

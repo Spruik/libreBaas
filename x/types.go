@@ -21,11 +21,16 @@ type ExportedGQLSchema struct {
 	Schema    string
 }
 
-// SensitiveByteSlice implements the Stringer interface to redact its contents.
+type GQL struct {
+	Schema string
+	Script string
+}
+
+// Sensitive implements the Stringer interface to redact its contents.
 // Use this type for sensitive info such as keys, passwords, or secrets so it doesn't leak
 // as output such as logs.
-type SensitiveByteSlice []byte
+type Sensitive []byte
 
-func (SensitiveByteSlice) String() string {
+func (Sensitive) String() string {
 	return "****"
 }

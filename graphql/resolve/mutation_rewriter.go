@@ -137,6 +137,19 @@ func NewVariableGenerator() *VariableGenerator {
 func (v *VariableGenerator) Next(typ schema.Type, xidName, xidVal string, auth bool) string {
 	// return previously allocated variable name for repeating xidVal
 	var key string
+	flagAndXidName := xidName
+	// isInterfaceVariable is true if Next function is being used to generate variable for an
+	// interface. This is used for XIDs which are part of interface with interface=true flag.
+	isIntefaceVariable := false
+
+	// We pass the xidName as "Int.xidName" to generate variable for existence query
+	// of interface type when id filed is inherited from interface and have interface Argument set
+	// Here we handle that case
+	if strings.Contains(flagAndXidName, ".") {
+		xidName = strings.Split(flagAndXidName, ".")[1]
+		isIntefaceVariable = true
+	}
+
 	if xidName == "" || xidVal == "" {
 		key = typ.Name()
 	} else {
@@ -153,7 +166,13 @@ func (v *VariableGenerator) Next(typ schema.Type, xidName, xidVal string, auth b
 		// ABC.ab.cd and ABC.abc.d
 		// It also ensures that xids from different types gets different variable names
 		// here we are using the assertion that field name or type name can't have "." in them
-		key = typ.FieldOriginatedFrom(xidName) + "." + xidName + "." + xidVal
+		xidType, _ := typ.FieldOriginatedFrom(xidName)
+		key = xidType.Name() + "." + flagAndXidName + "." + xidVal
+		if !isIntefaceVariable {
+			// This is done to ensure that two implementing types get a different variable
+			// assigned in case they are not inheriting the same XID with interface=true flag.
+			key = key + typ.Name()
+		}
 	}
 
 	if varName, ok := v.xidVarNameMap[key]; ok {
@@ -476,14 +495,16 @@ func (arw *AddRewriter) Rewrite(
 				"failed to rewrite mutation payload"))
 		}
 		// GN get list of types being mutated
-		requestTypes := make(map[string]string)
-		for _, val := range fragment.newNodes {
-			requestTypes[val.DgraphName()] = val.DgraphName()
-		}
-		//ToDo: Check if pep is nil
-		err := openIdConnect.OidcPep.CheckPermission("mutation", ctx, requestTypes)
-		if err != nil {
-			retErrors = err
+		if fragment != nil {
+			requestTypes := make(map[string]string)
+			for _, typeVal := range fragment.newNodes {
+				requestTypes[typeVal.DgraphName()] = typeVal.DgraphName()
+			}
+			//ToDo: Check if pep is nil
+			err := openIdConnect.OidcPep.CheckPermission("mutation", ctx, requestTypes)
+			if err != nil {
+				retErrors = err
+			}
 		}
 
 		// TODO: Do RBAC authorization along with RewriteQueries. This will save some time and queries need
